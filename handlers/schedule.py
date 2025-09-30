@@ -3,39 +3,9 @@ from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 
 from keyboards.inline import get_schedule_keyboard, get_back_button
+from utils.schedule_parser import schedule_parser
 
 router = Router()
-
-# Пример расписания (замените на реальное)
-SCHEDULE_DATA = {
-    'monday': [
-        "1. 09:00-10:30 - Математический анализ (лекция) - ауд. 301",
-        "2. 10:45-12:15 - Программирование (практика) - ауд. 205",
-        "3. 12:30-14:00 - Английский язык - ауд. 410"
-    ],
-    'tuesday': [
-        "1. 09:00-10:30 - Базы данных (лекция) - ауд. 302",
-        "2. 10:45-12:15 - Базы данных (лаб.) - ауд. 206",
-        "3. 12:30-14:00 - Физическая культура - Спортзал"
-    ],
-    'wednesday': [
-        "1. 09:00-10:30 - Алгоритмы (лекция) - ауд. 301",
-        "2. 10:45-12:15 - Алгоритмы (практика) - ауд. 205",
-        "3. 12:30-14:00 - Веб-разработка (лаб.) - ауд. 207"
-    ],
-    'thursday': [
-        "1. 09:00-10:30 - Операционные системы (лекция) - ауд. 303",
-        "2. 10:45-12:15 - Операционные системы (лаб.) - ауд. 208",
-    ],
-    'friday': [
-        "1. 09:00-10:30 - Математический анализ (практика) - ауд. 301",
-        "2. 10:45-12:15 - Программирование (лаб.) - ауд. 205",
-        "3. 12:30-14:00 - Философия (лекция) - ауд. 501"
-    ],
-    'saturday': [
-        "Выходной! 🎉"
-    ]
-}
 
 
 @router.message(Command("schedule"))
@@ -65,6 +35,15 @@ async def show_day_schedule(callback: CallbackQuery):
     day = callback.data.split("_")[1]
     
     day_names = {
+        'monday': 'понедельник',
+        'tuesday': 'вторник',
+        'wednesday': 'среда',
+        'thursday': 'четверг',
+        'friday': 'пятница',
+        'saturday': 'суббота'
+    }
+    
+    day_names_ru = {
         'monday': 'Понедельник',
         'tuesday': 'Вторник',
         'wednesday': 'Среда',
@@ -73,11 +52,31 @@ async def show_day_schedule(callback: CallbackQuery):
         'saturday': 'Суббота'
     }
     
-    schedule = SCHEDULE_DATA.get(day, ["Нет занятий"])
-    schedule_text = "\n".join(schedule)
+    day_ru = day_names.get(day, 'понедельник')
+    lessons = schedule_parser.get_day_schedule(day_ru)
+    
+    if not lessons:
+        schedule_text = "Нет занятий 🎉"
+    else:
+        schedule_lines = []
+        for i, lesson in enumerate(lessons, 1):
+            lesson_type = lesson.get('type', '')
+            type_emoji = {
+                'Лекция': '📚',
+                'Практика': '✏️',
+                'Лабораторная': '🔬'
+            }.get(lesson_type, '📖')
+            
+            schedule_lines.append(
+                f"{i}. {lesson['time']} {type_emoji}\n"
+                f"   <b>{lesson['subject']}</b>\n"
+                f"   👨‍🏫 {lesson['teacher']}\n"
+                f"   🚪 {lesson['room']}"
+            )
+        schedule_text = "\n\n".join(schedule_lines)
     
     text = (
-        f"📅 <b>Расписание на {day_names[day]}</b>\n\n"
+        f"📅 <b>Расписание на {day_names_ru[day]}</b>\n\n"
         f"{schedule_text}"
     )
     

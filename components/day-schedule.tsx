@@ -3,6 +3,7 @@ interface ClassInfo {
   subject: string
   room: string
   teacher: string
+  type?: string
 }
 
 interface DayScheduleProps {
@@ -10,7 +11,30 @@ interface DayScheduleProps {
   classes: ClassInfo[]
 }
 
+const getLessonEmoji = (type?: string) => {
+  const emojiMap: Record<string, string> = {
+    Лекция: "📚",
+    Практика: "✏️",
+    Лабораторная: "🔬",
+  }
+  return type ? emojiMap[type] || "📖" : "📖"
+}
+
 export function DaySchedule({ day, classes }: DayScheduleProps) {
+  if (classes.length === 0) {
+    return (
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className="bg-primary/10 border-b border-border px-4 py-3">
+          <h2 className="font-semibold text-lg text-primary">{day}</h2>
+        </div>
+        <div className="p-8 text-center text-muted-foreground">
+          <p className="text-2xl mb-2">🎉</p>
+          <p>Нет занятий</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div className="bg-primary/10 border-b border-border px-4 py-3">
@@ -26,11 +50,20 @@ export function DaySchedule({ day, classes }: DayScheduleProps) {
               </div>
 
               <div className="flex-1 min-w-0">
-                <h3 className="font-semibold mb-1 text-balance">{classInfo.subject}</h3>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-lg">{getLessonEmoji(classInfo.type)}</span>
+                  <h3 className="font-semibold text-balance">{classInfo.subject}</h3>
+                </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                  <span>{classInfo.room}</span>
+                  <span>👨‍🏫 {classInfo.teacher}</span>
                   <span>•</span>
-                  <span>{classInfo.teacher}</span>
+                  <span>🚪 {classInfo.room}</span>
+                  {classInfo.type && (
+                    <>
+                      <span>•</span>
+                      <span>{classInfo.type}</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
