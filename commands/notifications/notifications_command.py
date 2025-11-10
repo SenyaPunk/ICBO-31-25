@@ -3,19 +3,13 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from aiogram.enums import ChatType
 
-from commands.utils.notifications import get_notifications_keyboard
+from commands.notifications.notifications import get_notifications_keyboard
 
-# Создаем роутер для команды /notifications
 router = Router()
 
 
 @router.message(Command("notifications"))
 async def cmd_notifications(message: Message):
-    """
-    Обработчик команды /notifications
-    Открывает настройки уведомлений
-    """
-    # Проверяем, что это личное сообщение
     if message.chat.type != ChatType.PRIVATE:
         return
     

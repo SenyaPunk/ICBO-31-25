@@ -1,6 +1,6 @@
 from aiogram import Router
 from aiogram.filters import Command, ChatMemberUpdatedFilter, KICKED
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ChatType
 
 router = Router()
@@ -12,9 +12,16 @@ async def cmd_start(message: Message):
     
     user_name = message.from_user.first_name
     
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔔 Настройки уведомлений", callback_data="notifications_menu")]
+        ]
+    )
+    
     await message.answer(
         f"👋 <b>Привет, {user_name}!</b>\n\n"
         f"Я бот для вашей группы в институте.\n"
         f"Используй /help чтобы узнать список доступных команд.\n\n"
-        f"💡 <i>Команды работают только в личных сообщениях!</i>"
+        f"💡 <i>Команды работают только в личных сообщениях!</i>",
+        reply_markup=keyboard
     )

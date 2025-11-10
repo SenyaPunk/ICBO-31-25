@@ -1,14 +1,10 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-# Создаем роутер для настроек уведомлений
 router = Router()
 
-# Хранилище для состояния уведомлений пользователей (временно в памяти)
-# Структура: {user_id: {notification_type: bool}}
 user_notifications = {}
 
-# Типы уведомлений
 NOTIFICATION_TYPES = {
     "bot_updates": "Обновление бота",
     "control_works": "Новые контрольные мероприятия",
@@ -19,32 +15,26 @@ NOTIFICATION_TYPES = {
 
 
 def get_user_notifications(user_id: int) -> dict:
-    """Получить настройки уведомлений пользователя"""
     if user_id not in user_notifications:
-        # По умолчанию все уведомления включены
         user_notifications[user_id] = {key: True for key in NOTIFICATION_TYPES.keys()}
     return user_notifications[user_id]
 
 
 def toggle_notification(user_id: int, notification_type: str) -> bool:
-    """Переключить уведомление"""
     notifications = get_user_notifications(user_id)
     notifications[notification_type] = not notifications[notification_type]
     return notifications[notification_type]
 
 
 def toggle_all_notifications(user_id: int, enable: bool):
-    """Включить/выключить все уведомления"""
     notifications = get_user_notifications(user_id)
     for key in notifications:
         notifications[key] = enable
 
 
 def get_notifications_keyboard(user_id: int) -> InlineKeyboardMarkup:
-    """Создать клавиатуру настроек уведомлений"""
     notifications = get_user_notifications(user_id)
     
-    # Создаем кнопки для каждого типа уведомлений
     buttons = []
     for key, title in NOTIFICATION_TYPES.items():
         status = "🟢" if notifications[key] else "🔴"
@@ -55,11 +45,9 @@ def get_notifications_keyboard(user_id: int) -> InlineKeyboardMarkup:
             )
         ])
     
-    # Проверяем, все ли уведомления включены или выключены
     all_enabled = all(notifications.values())
     all_disabled = not any(notifications.values())
     
-    # Кнопка включить/выключить все
     if all_enabled:
         buttons.append([
             InlineKeyboardButton(
@@ -75,7 +63,6 @@ def get_notifications_keyboard(user_id: int) -> InlineKeyboardMarkup:
             )
         ])
     else:
-        # Показываем обе кнопки, если частично включены
         buttons.append([
             InlineKeyboardButton(
                 text="🟢 Включить все",
@@ -87,7 +74,6 @@ def get_notifications_keyboard(user_id: int) -> InlineKeyboardMarkup:
             )
         ])
     
-    # Кнопка "Вернуться назад"
     buttons.append([
         InlineKeyboardButton(text="⬅️ Вернуться назад", callback_data="back_to_start")
     ])
@@ -97,7 +83,6 @@ def get_notifications_keyboard(user_id: int) -> InlineKeyboardMarkup:
 
 @router.callback_query(F.data == "notifications_menu")
 async def show_notifications_menu(callback: CallbackQuery):
-    """Показать меню настроек уведомлений"""
     user_id = callback.from_user.id
     keyboard = get_notifications_keyboard(user_id)
     
@@ -113,10 +98,8 @@ async def show_notifications_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("toggle_"))
 async def toggle_notification_handler(callback: CallbackQuery):
-    """Обработчик переключения уведомлений"""
     user_id = callback.from_user.id
     
-    # Определяем, что переключаем
     if callback.data == "toggle_all_on":
         toggle_all_notifications(user_id, True)
         await callback.answer("✅ Все уведомления включены")
@@ -124,20 +107,17 @@ async def toggle_notification_handler(callback: CallbackQuery):
         toggle_all_notifications(user_id, False)
         await callback.answer("❌ Все уведомления выключены")
     else:
-        # Переключаем конкретное уведомление
         notification_type = callback.data.replace("toggle_", "")
         new_state = toggle_notification(user_id, notification_type)
         status = "включено" if new_state else "выключено"
         await callback.answer(f"Уведомление {status}")
     
-    # Обновляем клавиатуру
     keyboard = get_notifications_keyboard(user_id)
     await callback.message.edit_reply_markup(reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "back_to_start")
 async def back_to_start(callback: CallbackQuery):
-    """Вернуться к стартовому сообщению"""
     user_name = callback.from_user.first_name
     
     keyboard = InlineKeyboardMarkup(
