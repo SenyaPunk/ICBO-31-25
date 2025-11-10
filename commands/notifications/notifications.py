@@ -1,9 +1,9 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
-router = Router()
+from commands.group.group_manager import group_manager
 
-user_notifications = {}
+router = Router()
 
 NOTIFICATION_TYPES = {
     "bot_updates": "Обновление бота",
@@ -15,14 +15,16 @@ NOTIFICATION_TYPES = {
 
 
 def get_user_notifications(user_id: int) -> dict:
-    if user_id not in user_notifications:
-        user_notifications[user_id] = {key: True for key in NOTIFICATION_TYPES.keys()}
-    return user_notifications[user_id]
+    member = group_manager.get_member(user_id)
+    if member and "notifications" in member:
+        return member["notifications"]
+    return {key: True for key in NOTIFICATION_TYPES.keys()}
 
 
 def toggle_notification(user_id: int, notification_type: str) -> bool:
     notifications = get_user_notifications(user_id)
     notifications[notification_type] = not notifications[notification_type]
+    group_manager.update_member(user_id, notifications=notifications)
     return notifications[notification_type]
 
 
@@ -30,6 +32,7 @@ def toggle_all_notifications(user_id: int, enable: bool):
     notifications = get_user_notifications(user_id)
     for key in notifications:
         notifications[key] = enable
+    group_manager.update_member(user_id, notifications=notifications)
 
 
 def get_notifications_keyboard(user_id: int) -> InlineKeyboardMarkup:
@@ -74,10 +77,6 @@ def get_notifications_keyboard(user_id: int) -> InlineKeyboardMarkup:
             )
         ])
     
-    buttons.append([
-        InlineKeyboardButton(text="⬅️ Вернуться назад", callback_data="back_to_start")
-    ])
-    
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -114,23 +113,3 @@ async def toggle_notification_handler(callback: CallbackQuery):
     
     keyboard = get_notifications_keyboard(user_id)
     await callback.message.edit_reply_markup(reply_markup=keyboard)
-
-
-@router.callback_query(F.data == "back_to_start")
-async def back_to_start(callback: CallbackQuery):
-    user_name = callback.from_user.first_name
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔔 Настройки уведомлений", callback_data="notifications_menu")]
-        ]
-    )
-    
-    await callback.message.edit_text(
-        f"👋 <b>Привет, {user_name}!</b>\n\n"
-        f"Я бот для вашей группы в институте.\n"
-        f"Используй /help чтобы узнать список доступных команд.\n\n"
-        f"💡 <i>Команды работают только в личных сообщениях!</i>",
-        reply_markup=keyboard
-    )
-    await callback.answer()
