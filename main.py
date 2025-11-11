@@ -16,6 +16,7 @@ from commands.notifications.notifications import router as notifications_router
 from commands.notifications.notifications_command import router as notifications_command_router
 from commands.notifications.notification_panel_command import router as notification_panel_router
 from commands.group.admin_command import router as admin_router
+from commands.schedule.schedule_command import router as schedule_router  # Added schedule router import
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,11 +44,14 @@ async def main():
     dp.include_router(notifications_command_router)
     dp.include_router(notification_panel_router)
     dp.include_router(admin_router)
+    dp.include_router(schedule_router)  # Added schedule router
     
     commands = [
         BotCommand(command="start", description="🏠 Главное меню / Регистрация"),
         BotCommand(command="help", description="❓ Помощь"),
         BotCommand(command="hello", description="👋 Поздороваться"),
+        BotCommand(command="schedule", description="📚 Расписание на неделю"),
+        BotCommand(command="today", description="📚 Расписание на сегодня"),
         BotCommand(command="notifications", description="🔔 Настройки уведомлений"),
         BotCommand(command="notif_panel", description="📢 Панель уведомлений (Староста)"),
         BotCommand(command="admin", description="👨‍💼 Панель администратора"),
