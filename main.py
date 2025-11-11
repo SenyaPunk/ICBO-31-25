@@ -14,6 +14,7 @@ from commands.utils.hello import router as hello_router
 from commands.utils.myid import router as myid_router  
 from commands.notifications.notifications import router as notifications_router
 from commands.notifications.notifications_command import router as notifications_command_router
+from commands.notifications.notification_panel_command import router as notification_panel_router
 from commands.group.admin_command import router as admin_router
 
 logging.basicConfig(
@@ -40,6 +41,7 @@ async def main():
     dp.include_router(myid_router)  
     dp.include_router(notifications_router)
     dp.include_router(notifications_command_router)
+    dp.include_router(notification_panel_router)
     dp.include_router(admin_router)
     
     commands = [
@@ -47,6 +49,7 @@ async def main():
         BotCommand(command="help", description="❓ Помощь"),
         BotCommand(command="hello", description="👋 Поздороваться"),
         BotCommand(command="notifications", description="🔔 Настройки уведомлений"),
+        BotCommand(command="notif_panel", description="📢 Панель уведомлений (Староста)"),
         BotCommand(command="admin", description="👨‍💼 Панель администратора"),
         BotCommand(command="myid", description="🆔 Узнать свой ID")
     ]

@@ -2,6 +2,7 @@ data
 .env
 main.zip
 main1.zip
+test.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
