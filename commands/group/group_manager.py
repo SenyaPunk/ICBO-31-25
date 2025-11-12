@@ -97,6 +97,10 @@ class GroupManager:
         data = self._load_data()
         return [member for member in data["members"].values() 
                 if member["role"] == role.value]
+    
+    def get_headman(self) -> Optional[dict]:
+        headmen = self.get_members_by_role(Role.STAROSTA)
+        return headmen[0] if headmen else None
 
 
 group_manager = GroupManager()

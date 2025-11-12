@@ -16,7 +16,12 @@ from commands.notifications.notifications import router as notifications_router
 from commands.notifications.notifications_command import router as notifications_command_router
 from commands.notifications.notification_panel_command import router as notification_panel_router
 from commands.group.admin_command import router as admin_router
-from commands.schedule.schedule_command import router as schedule_router  # Added schedule router import
+from commands.schedule.schedule_command import router as schedule_router
+from commands.schedule.attendance_handler import router as attendance_router
+from commands.schedule.file_manager_command import router as file_manager_router
+from commands.schedule.test_schedule_command import router as test_schedule_router
+from commands.schedule.schedule_notifier import ScheduleNotifier
+from commands.schedule import notifier_instance
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,7 +49,10 @@ async def main():
     dp.include_router(notifications_command_router)
     dp.include_router(notification_panel_router)
     dp.include_router(admin_router)
-    dp.include_router(schedule_router)  # Added schedule router
+    dp.include_router(schedule_router)
+    dp.include_router(attendance_router)
+    dp.include_router(file_manager_router)
+    dp.include_router(test_schedule_router)
     
     commands = [
         BotCommand(command="start", description="🏠 Главное меню / Регистрация"),
@@ -55,16 +63,31 @@ async def main():
         BotCommand(command="notifications", description="🔔 Настройки уведомлений"),
         BotCommand(command="notif_panel", description="📢 Панель уведомлений (Староста)"),
         BotCommand(command="admin", description="👨‍💼 Панель администратора"),
-        BotCommand(command="myid", description="🆔 Узнать свой ID")
+        BotCommand(command="myid", description="🆔 Узнать свой ID"),
+        BotCommand(command="manage_files", description="📂 Управление файлов для пар (Староста)"),
+        BotCommand(command="test_schedule", description="🧪 Тест уведомлений (Староста)")
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
     
     logger.info("Бот запущен и готов к работе!")
     
+    schedule_notifier = ScheduleNotifier(bot)
+    notifier_instance.set_notifier(schedule_notifier)
+    logger.info("ScheduleNotifier создан и зарегистрирован")
+    
+    notifier_task = asyncio.create_task(schedule_notifier.start())
+    logger.info(f"ScheduleNotifier запущен, is_running={schedule_notifier.is_running}")
+    
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
+        schedule_notifier.stop()
+        notifier_task.cancel()
+        try:
+            await notifier_task
+        except asyncio.CancelledError:
+            pass
         await bot.session.close()
 
 

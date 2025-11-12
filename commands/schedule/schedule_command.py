@@ -23,18 +23,14 @@ async def cmd_schedule(message: Message):
         return
     
     try:
-        # Отправляем сообщение о загрузке
         loading_msg = await message.answer("⏳ Загружаю расписание на неделю...")
         
-        # Загружаем расписание
         ical_str = fetch_ics_from_json(URL)
         events = parse_schedule(ical_str)
         week_events = get_week_lessons(events)
         
-        # Форматируем сообщение
         schedule_text = format_schedule_message(week_events, "неделю")
         
-        # Получ��ем текущую неделю
         import datetime
         today = datetime.date.today()
         week_start = today - datetime.timedelta(days=today.weekday())
@@ -48,7 +44,6 @@ async def cmd_schedule(message: Message):
             f"{schedule_text}"
         )
         
-        # Обновляем сообщение
         await loading_msg.edit_text(header)
         
     except Exception as e:
@@ -64,15 +59,12 @@ async def cmd_today_schedule(message: Message):
         return
     
     try:
-        # Отправляем сообщение о загрузке
         loading_msg = await message.answer("⏳ Загружаю расписание на сегодня...")
         
-        # Загружаем расписание
         ical_str = fetch_ics_from_json(URL)
         events = parse_schedule(ical_str)
         today_events = get_today_lessons(events)
         
-        # Форматируем сообщение
         import datetime
         today = datetime.date.today()
         schedule_text = format_schedule_message(today_events, "день")
@@ -83,7 +75,6 @@ async def cmd_today_schedule(message: Message):
             f"{schedule_text}"
         )
         
-        # Обновляем сообщение
         await loading_msg.edit_text(header)
         
     except Exception as e:
