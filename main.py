@@ -22,6 +22,9 @@ from commands.schedule.file_manager_command import router as file_manager_router
 from commands.schedule.test_schedule_command import router as test_schedule_router
 from commands.schedule.schedule_notifier import ScheduleNotifier
 from commands.schedule import notifier_instance
+from commands.greetings.greetings_command import router as greetings_router
+from commands.greetings.greetings_command import setup_scheduler as setup_greetings_scheduler
+from commands.greetings.greetings_command import start_scheduler as start_greetings_scheduler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,6 +56,7 @@ async def main():
     dp.include_router(attendance_router)
     dp.include_router(file_manager_router)
     dp.include_router(test_schedule_router)
+    dp.include_router(greetings_router)
     
     commands = [
         BotCommand(command="start", description="🏠 Главное меню / Регистрация"),
@@ -65,11 +69,18 @@ async def main():
         BotCommand(command="admin", description="👨‍💼 Панель администратора"),
         BotCommand(command="myid", description="🆔 Узнать свой ID"),
         BotCommand(command="manage_files", description="📂 Управление файлов для пар (Староста)"),
-        BotCommand(command="test_schedule", description="🧪 Тест уведомлений (Староста)")
+        BotCommand(command="test_schedule", description="🧪 Тест уведомлений (Староста)"),
+        BotCommand(command="preview", description="👀 Предпросмотр приветствия (Админ)"),
+        BotCommand(command="greeting_schedule", description="📅 Расписание приветствий (Админ)"),
+        BotCommand(command="greeting_config", description="⚙️ Настройки приветствий (Админ)")
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
     
     logger.info("Бот запущен и готов к работе!")
+    
+    setup_greetings_scheduler(bot)
+    start_greetings_scheduler()
+    logger.info("✅ Система приветствий инициализирована")
     
     schedule_notifier = ScheduleNotifier(bot)
     notifier_instance.set_notifier(schedule_notifier)

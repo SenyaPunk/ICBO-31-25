@@ -1,6 +1,3 @@
-"""
-Менеджер для работы с данными группы
-"""
 import json
 import os
 from typing import Dict, List, Optional
