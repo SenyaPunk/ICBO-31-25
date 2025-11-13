@@ -19,8 +19,6 @@ logger = logging.getLogger(__name__)
 
 @router.message(Command("schedule"))
 async def cmd_schedule(message: Message):
-    if message.chat.type != ChatType.PRIVATE:
-        return
     
     try:
         loading_msg = await message.answer("⏳ Загружаю расписание на неделю...")
@@ -55,8 +53,7 @@ async def cmd_schedule(message: Message):
 
 @router.message(Command("today"))
 async def cmd_today_schedule(message: Message):
-    if message.chat.type != ChatType.PRIVATE:
-        return
+    
     
     try:
         loading_msg = await message.answer("⏳ Загружаю расписание на сегодня...")
