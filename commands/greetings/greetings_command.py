@@ -8,6 +8,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, BufferedInputFile
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from dateutil import tz
 
 from utils.fusion_brain import FusionBrainAPI
 from utils.text_generator import TextGenerator
@@ -248,6 +249,10 @@ async def check_greeting_config(message: Message):
     status.append(f"⏰ MORNING_TIME: {morning}")
     status.append(f"🌙 EVENING_TIME: {evening}")
     
+    moscow_tz = tz.gettz("Europe/Moscow")
+    current_moscow_time = datetime.datetime.now(moscow_tz)
+    status.append(f"\n🕐 Текущее время МСК: {current_moscow_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    
     config_text = "<b>Конфигурация системы приветствий:</b>\n\n" + "\n".join(status)
     
     if not fusion_key or not fusion_secret:
@@ -273,9 +278,11 @@ def setup_scheduler(bot):
     morning_hour, morning_minute = map(int, morning_time.split(':'))
     evening_hour, evening_minute = map(int, evening_time.split(':'))
     
+    moscow_tz = tz.gettz("Europe/Moscow")
+    
     scheduler.add_job(
         send_greeting_message,
-        CronTrigger(hour=morning_hour, minute=morning_minute),
+        CronTrigger(hour=morning_hour, minute=morning_minute, timezone=moscow_tz),
         args=[bot, "morning"],
         id="morning_greeting",
         replace_existing=True
@@ -283,13 +290,13 @@ def setup_scheduler(bot):
     
     scheduler.add_job(
         send_greeting_message,
-        CronTrigger(hour=evening_hour, minute=evening_minute),
+        CronTrigger(hour=evening_hour, minute=evening_minute, timezone=moscow_tz),
         args=[bot, "evening"],
         id="evening_greeting",
         replace_existing=True
     )
     
-    logger.info(f"✅ Планировщик приветствий настроен: утро - {morning_time}, вечер - {evening_time}")
+    logger.info(f"✅ Планировщик приветствий настроен: утро - {morning_time}, вечер - {evening_time} (МСК)")
 
 
 def start_scheduler():

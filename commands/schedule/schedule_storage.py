@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+from dateutil import tz
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +13,7 @@ class ScheduleStorage:
     def __init__(self, storage_file="data/schedule_data.json"):
         self.storage_file = storage_file
         self.data = self._load_data()
+        self.moscow_tz = tz.gettz("Europe/Moscow")
     
     def _load_data(self) -> Dict:
         if os.path.exists(self.storage_file):
@@ -42,11 +44,11 @@ class ScheduleStorage:
         return lesson_id in self.data["notified_lessons"]
     
     def mark_as_notified(self, lesson_id: str):
-        self.data["notified_lessons"][lesson_id] = datetime.now().isoformat()
+        self.data["notified_lessons"][lesson_id] = datetime.now(self.moscow_tz).isoformat()
         self._save_data()
     
     def _cleanup_old_notifications(self):
-        now = datetime.now()
+        now = datetime.now(self.moscow_tz)
         to_delete = []
         
         for lesson_id, timestamp_str in self.data["notified_lessons"].items():

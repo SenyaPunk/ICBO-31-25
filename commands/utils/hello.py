@@ -3,6 +3,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from aiogram.enums import ChatType
 from datetime import datetime
+from dateutil import tz
 
 router = Router()
 
@@ -13,7 +14,8 @@ async def cmd_hello(message: Message):
         return
     
     user_name = message.from_user.first_name
-    current_hour = datetime.now().hour
+    moscow_tz = tz.gettz("Europe/Moscow")
+    current_hour = datetime.now(moscow_tz).hour
     
     if 5 <= current_hour < 12:
         greeting = "Доброе утро"
