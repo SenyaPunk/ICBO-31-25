@@ -2,13 +2,14 @@ import asyncio
 import json
 import logging
 import os
+import re
 import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from dateutil import tz
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, FSInputFile
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, FSInputFile, InputMediaDocument
 
 from commands.schedule.schedule_parser import (
     fetch_ics_from_json,
@@ -35,7 +36,7 @@ class ScheduleNotifier:
         if self.test_mode:
             self.check_interval = int(os.environ.get("TEST_CHECK_INTERVAL", "10"))  
             self.notify_minutes_before = int(os.environ.get("TEST_NOTIFY_MINUTES", "1"))  
-            logger.info(f"⚠️  ТЕСТОВЫЙ РЕЖИМ АКТИВЕН: проверка каждые {self.check_interval}с, уведомление за {self.notify_minutes_before}мин")
+            logger.info(f"ТЕСТОВЫЙ РЕЖИМ АКТИВЕН: проверка каждые {self.check_interval}с, уведомление за {self.notify_minutes_before}мин")
         else:
             self.check_interval = 60  
             self.notify_minutes_before = 10  
@@ -43,7 +44,9 @@ class ScheduleNotifier:
     def set_test_time(self, test_time: datetime):
         if self.test_mode:
             self.test_current_time = test_time
-            logger.info(f"🕐 Установлено тестовое время: {test_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            self.storage.clear_notified_lessons()
+            logger.info(f"Установлено тестовое время: {test_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            logger.info("Список уведомленных пар очищен для тестирования")
         else:
             logger.warning("Тестовое время можно установить только в тестовом режиме (TEST_MODE=true)")
     
@@ -54,11 +57,11 @@ class ScheduleNotifier:
         
     async def start(self):
         if not self.notification_chat_id and not self.test_mode:
-            logger.warning("NOTIFICATION_CHAT_ID не установлен в .env. Система уведомлений не будет работать.")
+            logger.warning("NOTIFICATION_CHAT_ID не установлен. Уведомления не будут работать.")
             return
         
         if not self.notification_chat_id:
-            logger.warning("NOTIFICATION_CHAT_ID не установлен, но тестовый режим активен. Уведомления отправляться не будут.")
+            logger.warning("NOTIFICATION_CHAT_ID не установлен, но тестовый режим активен.")
             
         self.is_running = True
         logger.info("Система уведомлений о парах запущена")
@@ -78,15 +81,15 @@ class ScheduleNotifier:
     async def _check_and_notify(self):
         try:
             now = self.get_current_time()
-            
             target_time = now + timedelta(minutes=self.notify_minutes_before)
             
-            if self.test_mode:
-                logger.debug(f"🔍 Проверка расписания. Текущее время: {now.strftime('%H:%M:%S')}, "
-                           f"ищем пары на {target_time.strftime('%H:%M:%S')}")
+            logger.info(f"Проверка расписания. Время: {now.strftime('%H:%M:%S')}, ищем пары на {target_time.strftime('%H:%M:%S')}")
             
             ical_str = fetch_ics_from_json(URL)
             events = parse_schedule(ical_str)
+            
+            today_events = [e for e in events if e["start"].date() == now.date()]
+            logger.info(f"Найдено {len(today_events)} пар на сегодня")
             
             for event in events:
                 start_time = event["start"]
@@ -100,10 +103,10 @@ class ScheduleNotifier:
                 max_diff = self.notify_minutes_before + 1
                 
                 if self.test_mode:
-                    logger.debug(f"  Пара '{event['title']}' начнется в {start_time.strftime('%H:%M')}, "
-                               f"разница: {time_diff:.1f} мин (нужно {min_diff}-{max_diff})")
+                    logger.info(f"  Пара: '{event['title']}' в {start_time.strftime('%H:%M')}, разница: {time_diff:.1f} мин (нужно {min_diff}-{max_diff})")
                 
                 if min_diff <= time_diff <= max_diff:
+                    logger.info(f"  >>> НАЙДЕНА ПАРА ДЛЯ УВЕДОМЛЕНИЯ: {event['title']}")
                     lesson_full_id = f"{start_time.strftime('%Y%m%d%H%M')}_{event['title']}"
                     lesson_id = hashlib.md5(lesson_full_id.encode()).hexdigest()[:16]
                     
@@ -111,8 +114,10 @@ class ScheduleNotifier:
                         if self.notification_chat_id:
                             await self._send_lesson_notification(event, lesson_id, lesson_full_id)
                         else:
-                            logger.info(f"⚠️  Найдена пара для уведомления, но NOTIFICATION_CHAT_ID не установлен: {event['title']} в {start_time.strftime('%H:%M')}")
+                            logger.info(f"Найдена пара для уведомления (нет CHAT_ID): {event['title']}")
                         self.storage.mark_as_notified(lesson_id)
+                    else:
+                        logger.info(f"  Пара уже была уведомлена ранее: {lesson_id}")
                         
         except Exception as e:
             logger.error(f"Ошибка при проверке расписания: {e}", exc_info=True)
@@ -126,7 +131,6 @@ class ScheduleNotifier:
             teacher_raw = event["teacher"]
             teacher = extract_teacher_name(teacher_raw)
             
-            import re
             match = re.match(r'^(ЛК|ПР|ЛАБ)\s+(.+)', title)
             if match:
                 lesson_type = match.group(1)
@@ -137,7 +141,7 @@ class ScheduleNotifier:
             
             type_emoji = {
                 "ЛК": "📖",
-                "ПР": "3️⃣",
+                "ПР": "✏️",
                 "ЛАБ": "🔬"
             }
             emoji = type_emoji.get(lesson_type, "📚")
@@ -166,6 +170,13 @@ class ScheduleNotifier:
                 )]
             ])
             
+            logger.info(f"Ищем файлы для пары: '{title}'")
+            files = self.storage.get_lesson_files(lesson_id, title)
+            
+            if files:
+                logger.info(f"Найдено {len(files)} файлов для отправки")
+                message_text += f"\n📎 Прикрепленные материалы: {len(files)} файл(ов)"
+            
             sent_message = await self.bot.send_message(
                 chat_id=self.notification_chat_id,
                 text=message_text,
@@ -174,22 +185,36 @@ class ScheduleNotifier:
             )
             
             self.storage.save_attendance_message(lesson_id, sent_message.message_id, lesson_name)
+            logger.info(f"Отправлено уведомление о паре: {title} в {start_time.strftime('%H:%M')}")
             
-            files = self.storage.get_lesson_files(lesson_id, lesson_name)
             if files:
-                for file_path in files:
-                    try:
+                try:
+                    media_group = []
+                    for i, file_path in enumerate(files):
                         if os.path.exists(file_path):
                             file = FSInputFile(file_path)
-                            await self.bot.send_document(
-                                chat_id=self.notification_chat_id,
-                                document=file,
-                                caption=f"📎 Материалы для пары: {lesson_name}"
-                            )
-                    except Exception as e:
-                        logger.error(f"Ошибка при отправке файла {file_path}: {e}")
-            
-            logger.info(f"✅ Отправлено уведомление о паре: {lesson_name} в {start_time.strftime('%H:%M')}")
+                            file_name = os.path.basename(file_path)
+                            # Add caption only to the first file
+                            caption = f"📎 Материалы к паре" if i == 0 else None
+                            media_group.append(InputMediaDocument(
+                                media=file,
+                                caption=caption
+                            ))
+                            logger.info(f"Добавлен файл в группу: {file_path}")
+                        else:
+                            logger.warning(f"Файл не существует: {file_path}")
+                    
+                    if media_group:
+                        await self.bot.send_media_group(
+                            chat_id=self.notification_chat_id,
+                            media=media_group,
+                            reply_to_message_id=sent_message.message_id
+                        )
+                        logger.info(f"Отправлена группа из {len(media_group)} файлов")
+                except Exception as e:
+                    logger.error(f"Ошибка при отправке группы файлов: {e}", exc_info=True)
+            else:
+                logger.info(f"Файлы для пары '{title}' не найдены")
             
         except Exception as e:
             logger.error(f"Ошибка при отправке уведомления о паре: {e}", exc_info=True)

@@ -14,10 +14,75 @@ logger = logging.getLogger(__name__)
 
 storage = ScheduleStorage()
 
+ALL_SUBJECTS = [
+    "ЛК Информатика",
+    "ЛК Физика",
+    "ПР Физическая культура и спорт",
+    "ПР Иностранный язык",
+    "ЛК История России",
+    "ЛК Линейная алгебра и аналитическая геометрия",
+    "ПР Математический анализ",
+    "ПР История России",
+    "ПР Линейная алгебра и аналитическая геометрия",
+    "ПР Информатика",
+    "ПР Физика",
+    "ПР Математическая логика и теория алгоритмов",
+    "ЛК Математический анализ",
+    "ЛК Математическая логика и теория алгоритмов",
+    "ЛК Введение в профессиональную деятельность",
+    "ЛАБ Физика (1 п/г)",
+    "ЛАБ Физика (2 п/г)",
+]
+
 
 class FileManagerStates(StatesGroup):
     waiting_for_lesson_name = State()
     waiting_for_files = State()
+    selecting_subject_page = State() 
+
+
+def create_subjects_keyboard(page: int = 0, items_per_page: int = 8) -> InlineKeyboardMarkup:
+    start_idx = page * items_per_page
+    end_idx = start_idx + items_per_page
+    current_subjects = ALL_SUBJECTS[start_idx:end_idx]
+    
+    buttons = []
+    for subject in current_subjects:
+        subject_idx = ALL_SUBJECTS.index(subject)
+        buttons.append([InlineKeyboardButton(
+            text=subject,
+            callback_data=f"sel_subj:{subject_idx}"
+        )])
+    
+    nav_buttons = []
+    total_pages = (len(ALL_SUBJECTS) + items_per_page - 1) // items_per_page
+    
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton(
+            text="⬅️ Назад",
+            callback_data=f"subj_page:{page - 1}"
+        ))
+    
+    nav_buttons.append(InlineKeyboardButton(
+        text=f"{page + 1}/{total_pages}",
+        callback_data="subj_page_info"
+    ))
+    
+    if end_idx < len(ALL_SUBJECTS):
+        nav_buttons.append(InlineKeyboardButton(
+            text="Вперед ➡️",
+            callback_data=f"subj_page:{page + 1}"
+        ))
+    
+    if nav_buttons:
+        buttons.append(nav_buttons)
+    
+    buttons.append([InlineKeyboardButton(
+        text="❌ Отмена",
+        callback_data="cancel_file_upload"
+    )])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.message(Command("manage_files"))
@@ -66,29 +131,69 @@ async def cmd_manage_files(message: Message):
 async def handle_add_files(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     
+    await state.set_state(FileManagerStates.selecting_subject_page)
+    await state.update_data(current_page=0)
+    
+    keyboard = create_subjects_keyboard(page=0)
+    
     await callback.message.answer(
-        "📝 Введите название пары, для которой хотите добавить файлы:\n\n"
-        "Например: <b>Математический анализ</b> или <b>Информатика</b>",
+        "📚 <b>Выберите предмет для добавления файлов:</b>\n\n"
+        "Нажмите на кнопку с нужным предметом:",
+        reply_markup=keyboard,
         parse_mode="HTML"
     )
-    
-    await state.set_state(FileManagerStates.waiting_for_lesson_name)
 
 
-@router.message(FileManagerStates.waiting_for_lesson_name)
-async def process_lesson_name(message: Message, state: FSMContext):
-    lesson_name = message.text.strip()
+@router.callback_query(F.data.startswith("subj_page:"))
+async def handle_subject_page(callback: CallbackQuery, state: FSMContext):
+    page = int(callback.data.split(":")[1])
+    await state.update_data(current_page=page)
     
-    await state.update_data(lesson_name=lesson_name)
+    keyboard = create_subjects_keyboard(page=page)
     
-    await message.answer(
-        f"📚 Пара: <b>{lesson_name}</b>\n\n"
-        f"Теперь отправьте файлы, которые нужно прикреплять к уведомлениям об этой паре.\n\n"
-        f"Вы можете отправить несколько файлов. Когда закончите, отправьте команду /done",
+    await callback.message.edit_text(
+        "📚 <b>Выберите предмет для добавления файлов:</b>\n\n"
+        "Нажмите на кнопку с нужным предметом:",
+        reply_markup=keyboard,
         parse_mode="HTML"
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "subj_page_info")
+async def handle_page_info(callback: CallbackQuery):
+    await callback.answer("Текущая страница", show_alert=False)
+
+
+@router.callback_query(F.data.startswith("sel_subj:"))
+async def handle_select_subject(callback: CallbackQuery, state: FSMContext):
+    subject_idx = int(callback.data.split(":")[1])
     
-    await state.set_state(FileManagerStates.waiting_for_files)
+    if 0 <= subject_idx < len(ALL_SUBJECTS):
+        lesson_name = ALL_SUBJECTS[subject_idx]
+        await state.update_data(lesson_name=lesson_name)
+        
+        await callback.message.edit_text(
+            f"✅ <b>Выбран предмет:</b> {lesson_name}\n\n"
+            f"📎 Теперь отправьте файлы, которые нужно прикреплять к уведомлениям об этой паре.\n\n"
+            f"Вы можете отправить несколько файлов. Когда закончите, отправьте команду /done",
+            parse_mode="HTML"
+        )
+        
+        await state.set_state(FileManagerStates.waiting_for_files)
+        await callback.answer()
+    else:
+        await callback.answer("❌ Ошибка: предмет не найден", show_alert=True)
+
+
+@router.callback_query(F.data == "cancel_file_upload")
+async def handle_cancel_upload(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text(
+        "❌ Добавление файлов отменено.",
+        parse_mode="HTML"
+    )
+    await callback.answer()
 
 
 @router.message(FileManagerStates.waiting_for_files, F.document)
@@ -112,7 +217,7 @@ async def process_file(message: Message, state: FSMContext):
         storage.add_lesson_files(lesson_name, [file_path])
         
         await message.answer(
-            f"✅ Файл <b>{file_name}</b> добавлен!\n\n"
+            f"✅ Файл <b>{file_name}</b> добавлен для <b>{lesson_name}</b>!\n\n"
             f"Отправьте еще файлы или /done для завершения.",
             parse_mode="HTML"
         )
@@ -150,24 +255,35 @@ async def handle_remove_files(callback: CallbackQuery):
     for lesson_name in all_files.keys():
         buttons.append([InlineKeyboardButton(
             text=f"🗑 {lesson_name}",
-            callback_data=f"delete_files:{lesson_name}"
+            callback_data=f"delete_files:{lesson_name[:50]}"  # Ограничение длины callback_data
         )])
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
     
     await callback.message.answer(
-        reply_markup=keyboard
+        "🗑 <b>Выберите предмет для удаления файлов:</b>",
+        reply_markup=keyboard,
+        parse_mode="HTML"
     )
 
 
 @router.callback_query(F.data.startswith("delete_files:"))
 async def handle_delete_files(callback: CallbackQuery):
-    lesson_name = callback.data.split(":", 1)[1]
+    lesson_name_partial = callback.data.split(":", 1)[1]
     
-    storage.remove_lesson_files(lesson_name)
+    all_files = storage.get_all_lesson_files()
+    lesson_name = None
+    for name in all_files.keys():
+        if name.startswith(lesson_name_partial) or name == lesson_name_partial:
+            lesson_name = name
+            break
     
-    await callback.answer("✅ Файлы удалены!", show_alert=True)
-    await callback.message.edit_text(
-        f"✅ Файлы для пары <b>{lesson_name}</b> успешно удалены.",
-        parse_mode="HTML"
-    )
+    if lesson_name:
+        storage.remove_lesson_files(lesson_name)
+        await callback.answer("✅ Файлы удалены!", show_alert=True)
+        await callback.message.edit_text(
+            f"✅ Файлы для пары <b>{lesson_name}</b> успешно удалены.",
+            parse_mode="HTML"
+        )
+    else:
+        await callback.answer("❌ Предмет не найден", show_alert=True)
