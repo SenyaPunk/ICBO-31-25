@@ -41,6 +41,8 @@ class ScheduleNotifier:
             self.check_interval = 60  
             self.notify_minutes_before = 10  
     
+        self.notify_minutes_before_long_break = 30
+    
     def set_test_time(self, test_time: datetime):
         if self.test_mode:
             self.test_current_time = test_time
@@ -81,26 +83,25 @@ class ScheduleNotifier:
     async def _check_and_notify(self):
         try:
             now = self.get_current_time()
-            target_time = now + timedelta(minutes=self.notify_minutes_before)
             
-            logger.info(f"Проверка расписания. Время: {now.strftime('%H:%M:%S')}, ищем пары на {target_time.strftime('%H:%M:%S')}")
+            logger.info(f"Проверка расписания. Время: {now.strftime('%H:%M:%S')}")
             
             ical_str = fetch_ics_from_json(URL)
             events = parse_schedule(ical_str)
             
             today_events = [e for e in events if e["start"].date() == now.date()]
+            today_events = sorted(today_events, key=lambda x: x["start"])
             logger.info(f"Найдено {len(today_events)} пар на сегодня")
             
-            for event in events:
+            for event in today_events:
                 start_time = event["start"]
                 
-                if start_time.date() != now.date():
-                    continue
+                notify_minutes = self._get_notify_minutes_for_lesson(event, today_events)
                 
                 time_diff = (start_time - now).total_seconds() / 60
                 
-                min_diff = self.notify_minutes_before - 1
-                max_diff = self.notify_minutes_before + 1
+                min_diff = notify_minutes - 1
+                max_diff = notify_minutes + 1
                 
                 if self.test_mode:
                     logger.info(f"  Пара: '{event['title']}' в {start_time.strftime('%H:%M')}, разница: {time_diff:.1f} мин (нужно {min_diff}-{max_diff})")
@@ -112,7 +113,7 @@ class ScheduleNotifier:
                     
                     if not self.storage.was_notified(lesson_id):
                         if self.notification_chat_id:
-                            await self._send_lesson_notification(event, lesson_id, lesson_full_id)
+                            await self._send_lesson_notification(event, lesson_id, lesson_full_id, notify_minutes)
                         else:
                             logger.info(f"Найдена пара для уведомления (нет CHAT_ID): {event['title']}")
                         self.storage.mark_as_notified(lesson_id)
@@ -122,8 +123,11 @@ class ScheduleNotifier:
         except Exception as e:
             logger.error(f"Ошибка при проверке расписания: {e}", exc_info=True)
     
-    async def _send_lesson_notification(self, event: Dict, lesson_id: str, lesson_full_id: str):
+    async def _send_lesson_notification(self, event: Dict, lesson_id: str, lesson_full_id: str, notify_minutes: int = None):
         try:
+            if notify_minutes is None:
+                notify_minutes = self.notify_minutes_before
+            
             title = event["title"]
             start_time = event["start"]
             end_time = event["end"]
@@ -146,7 +150,7 @@ class ScheduleNotifier:
             }
             emoji = type_emoji.get(lesson_type, "📚")
             
-            notify_text = f"Через {self.notify_minutes_before} минут" if self.notify_minutes_before > 1 else "Через 1 минуту"
+            notify_text = f"Через {notify_minutes} минут" if notify_minutes > 1 else "Через 1 минуту"
             
             message_text = f"⏰ <b>{notify_text} начнется пара</b>\n\n"
             message_text += f"{emoji}  <b>{lesson_type} {lesson_name}</b>\n"
@@ -221,3 +225,27 @@ class ScheduleNotifier:
     
     async def get_attendance_list(self, lesson_id: str) -> List[Dict]:
         return self.storage.get_attendance_list(lesson_id)
+    
+    def _get_notify_minutes_for_lesson(self, event: Dict, today_events: List[Dict]) -> int:
+        start_time = event["start"]
+        
+        prev_event = None
+        for e in today_events:
+            if e["end"] <= start_time and e != event:
+                if prev_event is None or e["end"] > prev_event["end"]:
+                    prev_event = e
+        
+        if prev_event:
+            break_minutes = (start_time - prev_event["end"]).total_seconds() / 60
+            
+            if self.test_mode:
+                logger.info(f"  Перерыв до пары '{event['title']}': {break_minutes:.0f} мин (предыдущая: '{prev_event['title']}' до {prev_event['end'].strftime('%H:%M')})")
+            
+            if 25 <= break_minutes <= 35:
+                logger.info(f"  >>> 30-минутный перерыв обнаружен! Уведомление за {self.notify_minutes_before_long_break} минут")
+                return self.notify_minutes_before_long_break
+        else:
+            if self.test_mode:
+                logger.info(f"  Пара '{event['title']}' - первая пара дня, уведомление за {self.notify_minutes_before} минут")
+        
+        return self.notify_minutes_before
