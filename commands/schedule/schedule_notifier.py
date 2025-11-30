@@ -42,7 +42,13 @@ class ScheduleNotifier:
             self.notify_minutes_before = 10  
     
         self.notify_minutes_before_long_break = 30
+        
+        self.headman_checker = None
     
+    def set_headman_checker(self, checker):
+        self.headman_checker = checker
+        logger.info("HeadmanChecker подключен к ScheduleNotifier")
+
     def set_test_time(self, test_time: datetime):
         if self.test_mode:
             self.test_current_time = test_time
@@ -116,6 +122,30 @@ class ScheduleNotifier:
                             await self._send_lesson_notification(event, lesson_id, lesson_full_id, notify_minutes)
                         else:
                             logger.info(f"Найдена пара для уведомления (нет CHAT_ID): {event['title']}")
+                        
+                        if self.headman_checker:
+                            end_time = event["end"]
+                            lesson_time = f"{start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}"
+                            
+                            title = event["title"]
+                            match = re.match(r'^(ЛК|ПР|ЛАБ)\s+(.+)', title)
+                            if match:
+                                lesson_type = match.group(1)
+                                lesson_name = match.group(2)
+                                full_lesson_name = f"{lesson_type} {lesson_name}".strip()
+                            else:
+                                full_lesson_name = title
+                            
+                            logger.info(f"Вызываем headman_checker.ask_headman_presence для '{full_lesson_name}'")
+                            await self.headman_checker.ask_headman_presence(
+                                lesson_id=lesson_id,
+                                lesson_name=full_lesson_name,
+                                lesson_time=lesson_time
+                            )
+                            logger.info(f"Запрос старосте отправлен для пары: {full_lesson_name}")
+                        else:
+                            logger.warning("HeadmanChecker не подключен (self.headman_checker = None)")
+                        
                         self.storage.mark_as_notified(lesson_id)
                     else:
                         logger.info(f"  Пара уже была уведомлена ранее: {lesson_id}")
@@ -222,7 +252,7 @@ class ScheduleNotifier:
             
         except Exception as e:
             logger.error(f"Ошибка при отправке уведомления о паре: {e}", exc_info=True)
-    
+
     async def get_attendance_list(self, lesson_id: str) -> List[Dict]:
         return self.storage.get_attendance_list(lesson_id)
     

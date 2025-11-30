@@ -25,6 +25,15 @@ from commands.schedule import notifier_instance
 from commands.greetings.greetings_command import router as greetings_router
 from commands.greetings.greetings_command import setup_scheduler as setup_greetings_scheduler
 from commands.greetings.greetings_command import start_scheduler as start_greetings_scheduler
+from commands.schedule.headman_checker import (
+    router as headman_checker_router,
+    HeadmanChecker,
+    set_headman_checker
+)
+from commands.schedule.birthday_notifier import (
+    BirthdayNotifier,
+    set_birthday_notifier
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,6 +66,7 @@ async def main():
     dp.include_router(file_manager_router)
     dp.include_router(test_schedule_router)
     dp.include_router(greetings_router)
+    dp.include_router(headman_checker_router)
     
     commands = [
         BotCommand(command="start", description="🏠 Главное меню / Регистрация"),
@@ -86,17 +96,42 @@ async def main():
     notifier_instance.set_notifier(schedule_notifier)
     logger.info("ScheduleNotifier создан и зарегистрирован")
     
+    notification_chat_id = os.environ.get("NOTIFICATION_CHAT_ID")
+    test_mode = os.environ.get("TEST_MODE", "false").lower() == "true"
+    
+    if notification_chat_id or test_mode:
+        chat_id_for_checker = notification_chat_id or "test"
+        headman_checker = HeadmanChecker(bot, chat_id_for_checker)
+        set_headman_checker(headman_checker)
+        schedule_notifier.set_headman_checker(headman_checker)
+        logger.info(f"HeadmanChecker создан и подключен (chat_id: {chat_id_for_checker})")
+    else:
+        logger.warning("NOTIFICATION_CHAT_ID не установлен и TEST_MODE не активен. HeadmanChecker не будет работать.")
+    
+    birthday_notifier = BirthdayNotifier(bot)
+    set_birthday_notifier(birthday_notifier)
+    logger.info("BirthdayNotifier создан и зарегистрирован")
+    
     notifier_task = asyncio.create_task(schedule_notifier.start())
     logger.info(f"ScheduleNotifier запущен, is_running={schedule_notifier.is_running}")
+    
+    birthday_task = asyncio.create_task(birthday_notifier.start())
+    logger.info("BirthdayNotifier запущен")
     
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
         schedule_notifier.stop()
+        birthday_notifier.stop()  
         notifier_task.cancel()
+        birthday_task.cancel()  
         try:
             await notifier_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await birthday_task
         except asyncio.CancelledError:
             pass
         await bot.session.close()
