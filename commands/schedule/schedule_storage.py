@@ -176,12 +176,20 @@ class ScheduleStorage:
         self.reload_data()
         return self.data.get("lesson_files", {})
     
-    def save_attendance_message(self, lesson_id: str, message_id: int, lesson_name: str = ""):
+    def save_attendance_message(self, lesson_id: str, message_id: int, lesson_name: str = "", full_subject: str = "", 
+                                 lesson_start: str = "", break_minutes: int = 10):
+        
         self.data["attendance_messages"][lesson_id] = {
             "message_id": message_id,
-            "lesson_name": lesson_name
+            "lesson_name": lesson_name,
+            "full_subject": full_subject or lesson_name,
+            "lesson_start": lesson_start,
+            "break_minutes": break_minutes
         }
         self._save_data()
+    
+    def get_attendance_message_info(self, lesson_id: str) -> Optional[Dict]:
+        return self.data.get("attendance_messages", {}).get(lesson_id)
     
     def add_attendance_request(self, lesson_id: str, user_data: Dict):
         if lesson_id not in self.data["attendance_requests"]:

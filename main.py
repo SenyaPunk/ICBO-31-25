@@ -34,6 +34,14 @@ from commands.schedule.birthday_notifier import (
     BirthdayNotifier,
     set_birthday_notifier
 )
+from commands.homework.homework_command import router as homework_router
+from commands.homework.view_homework_command import router as view_homework_router
+from commands.homework.weekly_digest import (
+    router as weekly_digest_router,
+    WeeklyDigestNotifier,
+    set_weekly_digest_notifier
+)
+from commands.homework.homework_storage import homework_storage
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,6 +75,20 @@ async def main():
     dp.include_router(test_schedule_router)
     dp.include_router(greetings_router)
     dp.include_router(headman_checker_router)
+    dp.include_router(homework_router)
+    dp.include_router(view_homework_router)
+    dp.include_router(weekly_digest_router)
+    
+    cleanup_result = homework_storage.cleanup_old_weeks()
+    if cleanup_result["removed_homework_weeks"] or cleanup_result["removed_control_weeks"]:
+        logger.info(
+            f"🧹 При запуске очищены прошедшие недели. "
+            f"Текущая неделя: {cleanup_result['current_week']}. "
+            f"ДЗ: {cleanup_result['removed_homework_weeks']}, "
+            f"КМ: {cleanup_result['removed_control_weeks']}"
+        )
+    else:
+        logger.info(f"🧹 Очистка не требуется. Текущая учебная неделя: {cleanup_result['current_week']}")
     
     commands = [
         BotCommand(command="start", description="🏠 Главное меню / Регистрация"),
@@ -82,7 +104,12 @@ async def main():
         BotCommand(command="test_schedule", description="🧪 Тест уведомлений (Староста)"),
         BotCommand(command="preview", description="👀 Предпросмотр приветствия (Админ)"),
         BotCommand(command="greeting_schedule", description="📅 Расписание приветствий (Админ)"),
-        BotCommand(command="greeting_config", description="⚙️ Настройки приветствий (Админ)")
+        BotCommand(command="greeting_config", description="⚙️ Настройки приветствий (Админ)"),
+        BotCommand(command="homework", description="📚 Домашние задания и КМ"),
+        BotCommand(command="hw_today", description="📝 Задания на сегодня"),
+        BotCommand(command="hw_tomorrow", description="📝 Задания на завтра"),
+        BotCommand(command="hw_week", description="📝 Задания на неделю"),
+        BotCommand(command="test_digest", description="🧪 Тест еженедельного дайджеста (Староста)"),
     ]
     await bot.set_my_commands(commands, scope=BotCommandScopeDefault())
     
@@ -112,26 +139,41 @@ async def main():
     set_birthday_notifier(birthday_notifier)
     logger.info("BirthdayNotifier создан и зарегистрирован")
     
+    weekly_digest_notifier = WeeklyDigestNotifier(bot)
+    set_weekly_digest_notifier(weekly_digest_notifier)
+    logger.info("WeeklyDigestNotifier создан и зарегистрирован")
+    
     notifier_task = asyncio.create_task(schedule_notifier.start())
     logger.info(f"ScheduleNotifier запущен, is_running={schedule_notifier.is_running}")
     
     birthday_task = asyncio.create_task(birthday_notifier.start())
     logger.info("BirthdayNotifier запущен")
     
+    digest_task = asyncio.create_task(weekly_digest_notifier.start())
+    logger.info("WeeklyDigestNotifier запущен")
+    
+    logger.info("✅ Система домашних заданий и КМ инициализирована")
+    
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
     finally:
         schedule_notifier.stop()
-        birthday_notifier.stop()  
+        birthday_notifier.stop()
+        weekly_digest_notifier.stop()  
         notifier_task.cancel()
-        birthday_task.cancel()  
+        birthday_task.cancel()
+        digest_task.cancel()  
         try:
             await notifier_task
         except asyncio.CancelledError:
             pass
         try:
             await birthday_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            await digest_task   
         except asyncio.CancelledError:
             pass
         await bot.session.close()

@@ -197,10 +197,20 @@ class ScheduleNotifier:
             if self.test_mode:
                 message_text += f"\n<i>🧪 ТЕСТОВЫЙ РЕЖИМ</i>"
             
+            full_subject = f"{lesson_type} {lesson_name}".strip() if lesson_type else lesson_name
+            
+            break_minutes = 10  
+            if notify_minutes == self.notify_minutes_before_long_break:
+                break_minutes = 30  
+
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
                     text="✋ Меня надо отметить на паре",
                     callback_data=f"att:{lesson_id}"
+                )],
+                [InlineKeyboardButton(
+                    text="📝 Добавить ДЗ",
+                    callback_data=f"quick_hw:{lesson_id}:{full_subject}"
                 )]
             ])
             
@@ -218,7 +228,14 @@ class ScheduleNotifier:
                 parse_mode="HTML"
             )
             
-            self.storage.save_attendance_message(lesson_id, sent_message.message_id, lesson_name)
+            self.storage.save_attendance_message(
+                lesson_id, 
+                sent_message.message_id, 
+                lesson_name, 
+                full_subject,
+                lesson_start=start_time.isoformat(),
+                break_minutes=break_minutes
+            )
             logger.info(f"Отправлено уведомление о паре: {title} в {start_time.strftime('%H:%M')}")
             
             if files:
@@ -228,7 +245,6 @@ class ScheduleNotifier:
                         if os.path.exists(file_path):
                             file = FSInputFile(file_path)
                             file_name = os.path.basename(file_path)
-                            # Add caption only to the first file
                             caption = f"📎 Материалы к паре" if i == 0 else None
                             media_group.append(InputMediaDocument(
                                 media=file,
