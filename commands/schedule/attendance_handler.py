@@ -48,7 +48,7 @@ async def handle_attendance_request(callback: CallbackQuery):
                 "ℹ️ Вы уже отправили запрос на отметку для этой пары.",
                 show_alert=False
             )
-            
+        
         await _update_attendance_counter(callback, lesson_id)
         
     except Exception as e:
@@ -103,42 +103,24 @@ async def _update_attendance_counter(callback: CallbackQuery, lesson_id: str):
         attendance_list = storage.get_attendance_list(lesson_id)
         count = len(attendance_list)
         
-        message_info = storage.get_attendance_message_info(lesson_id)
-        full_subject = ""
-        
-        if message_info:
-            full_subject = message_info.get("full_subject", message_info.get("lesson_name", ""))
-        
-        if not full_subject and callback.message.reply_markup:
-            for row in callback.message.reply_markup.inline_keyboard:
-                for button in row:
-                    if button.callback_data and button.callback_data.startswith("quick_hw:"):
-                        parts = button.callback_data.split(":", 2)
-                        if len(parts) >= 3:
-                            full_subject = parts[2]
-                            break
-                if full_subject:
-                    break
-        
         buttons = [
             [InlineKeyboardButton(
                 text=f"✋ Меня надо отметить на паре ({count})" if count > 0 else "✋ Меня надо отметить на паре",
                 callback_data=f"att:{lesson_id}"
+            )],
+            [InlineKeyboardButton(
+                text="📝 Добавить ДЗ",
+                callback_data=f"quick_hw:{lesson_id}"
             )]
         ]
-        
-        if full_subject:
-            buttons.append([InlineKeyboardButton(
-                text="📝 Добавить ДЗ",
-                callback_data=f"quick_hw:{lesson_id}:{full_subject}"
-            )])
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
         
         await callback.message.edit_reply_markup(reply_markup=keyboard)
+        logger.info(f"Обновлена клавиатура для lesson_id={lesson_id}, счетчик={count}")
         
     except Exception as e:
-        logger.error(f"Ошибка при обновлении счетчика: {e}")
+        logger.error(f"Ошибка при обновлении счетчика: {e}", exc_info=True)
 
 
 @router.callback_query(F.data.startswith("view_attendance:"))

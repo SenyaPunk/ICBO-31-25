@@ -203,6 +203,17 @@ class ScheduleNotifier:
             if notify_minutes == self.notify_minutes_before_long_break:
                 break_minutes = 30  
 
+            logger.info(f"Сохраняем данные о паре: lesson_id={lesson_id}, full_subject='{full_subject}', lesson_name='{lesson_name}'")
+            self.storage.save_attendance_message(
+                lesson_id, 
+                0,  
+                lesson_name, 
+                full_subject,
+                lesson_start=start_time.isoformat(),
+                break_minutes=break_minutes
+            )
+            logger.info(f"Данные сохранены в storage до отправки сообщения")
+
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(
                     text="✋ Меня надо отметить на паре",
@@ -210,7 +221,7 @@ class ScheduleNotifier:
                 )],
                 [InlineKeyboardButton(
                     text="📝 Добавить ДЗ",
-                    callback_data=f"quick_hw:{lesson_id}:{full_subject}"
+                    callback_data=f"quick_hw:{lesson_id}"
                 )]
             ])
             
@@ -236,6 +247,7 @@ class ScheduleNotifier:
                 lesson_start=start_time.isoformat(),
                 break_minutes=break_minutes
             )
+            logger.info(f"Обновлен message_id={sent_message.message_id} для lesson_id={lesson_id}")
             logger.info(f"Отправлено уведомление о паре: {title} в {start_time.strftime('%H:%M')}")
             
             if files:

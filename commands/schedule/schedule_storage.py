@@ -179,6 +179,19 @@ class ScheduleStorage:
     def save_attendance_message(self, lesson_id: str, message_id: int, lesson_name: str = "", full_subject: str = "", 
                                  lesson_start: str = "", break_minutes: int = 10):
         
+        logger.info(f"=== СОХРАНЕНИЕ ДАННЫХ О ПАРЕ ===")
+        logger.info(f"lesson_id: {lesson_id}")
+        logger.info(f"message_id: {message_id}")
+        logger.info(f"lesson_name: '{lesson_name}'")
+        logger.info(f"full_subject: '{full_subject}'")
+        logger.info(f"lesson_start: {lesson_start}")
+        logger.info(f"break_minutes: {break_minutes}")
+        
+        self.data = self._load_data()
+        
+        if "attendance_messages" not in self.data:
+            self.data["attendance_messages"] = {}
+        
         self.data["attendance_messages"][lesson_id] = {
             "message_id": message_id,
             "lesson_name": lesson_name,
@@ -187,9 +200,21 @@ class ScheduleStorage:
             "break_minutes": break_minutes
         }
         self._save_data()
+        
+        logger.info(f"✅ Данные сохранены. Всего записей: {len(self.data['attendance_messages'])}")
+        logger.info(f"Доступные lesson_id: {list(self.data['attendance_messages'].keys())}")
     
     def get_attendance_message_info(self, lesson_id: str) -> Optional[Dict]:
-        return self.data.get("attendance_messages", {}).get(lesson_id)
+        self.data = self._load_data()
+        
+        result = self.data.get("attendance_messages", {}).get(lesson_id)
+        logger.info(f"=== ПОЛУЧЕНИЕ ДАННЫХ О ПАРЕ ===")
+        logger.info(f"Запрошен lesson_id: {lesson_id}")
+        logger.info(f"Результат: {result}")
+        if not result:
+            logger.warning(f"⚠️ Данные не найдены для lesson_id={lesson_id}")
+            logger.info(f"Доступные lesson_id: {list(self.data.get('attendance_messages', {}).keys())}")
+        return result
     
     def add_attendance_request(self, lesson_id: str, user_data: Dict):
         if lesson_id not in self.data["attendance_requests"]:

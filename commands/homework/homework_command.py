@@ -1,5 +1,3 @@
-
-
 import logging
 import re
 from datetime import date, datetime, timedelta
@@ -229,7 +227,7 @@ async def handle_view_km_button(message: Message):
             [InlineKeyboardButton(text="📋 Добавить КМ", callback_data="start_add_km")],
             [InlineKeyboardButton(text="🗑 Управление КМ", callback_data="manage_km")]
         ])
-        await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     else:
         await message.answer(text, parse_mode="HTML")
 
@@ -644,7 +642,7 @@ async def back_to_homework(callback: CallbackQuery):
         if upcoming_hw:
             text += "📝 <b>Домашние задания:</b>\n\n"
             for hw_date, subject, tasks in upcoming_hw:
-                date_str = format_date_ru(hw_date)
+                date_str = hw_date.strftime("%d.%m")
                 text += f"📅 <b>{date_str}</b>\n"
                 text += f"   📖 {subject}\n"
                 for task in tasks:
@@ -654,7 +652,7 @@ async def back_to_homework(callback: CallbackQuery):
         if upcoming_km:
             text += "📋 <b>Контрольные мероприятия:</b>\n\n"
             for km_date, subject, descriptions in upcoming_km:
-                date_str = format_date_ru(km_date)
+                date_str = km_date.strftime("%d.%m")
                 text += f"📅 <b>{date_str}</b>\n"
                 text += f"   📖 {subject}\n"
                 for desc in descriptions:
@@ -789,17 +787,47 @@ async def delete_km_confirm(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("quick_hw:"))
 async def quick_add_homework_start(callback: CallbackQuery, state: FSMContext):
     try:
-        
         parts = callback.data.split(":", 2)
-        if len(parts) < 3:
+        if len(parts) < 2:
             await callback.answer("❌ Ошибка: неверные данные", show_alert=True)
             return
         
         lesson_id = parts[1]
-        subject = parts[2]
         
         message_info = schedule_storage.get_attendance_message_info(lesson_id)
-        if message_info:
+        
+        if not message_info:
+            logger.warning(f"Данные о паре не найдены в storage для lesson_id={lesson_id}, пытаемся извлечь из сообщения")
+            
+            message_text = callback.message.text or callback.message.caption or ""
+            subject = _extract_subject_from_message(message_text)
+            
+            if not subject:
+                logger.error(f"Не удалось извлечь предмет из сообщения: {message_text[:100]}")
+                await callback.answer(
+                    "❌ Ошибка: данные о паре не найдены.\n"
+                    "Попробуйте добавить ДЗ через команду /homework",
+                    show_alert=True
+                )
+                return
+            
+            logger.info(f"Восстанавливаем данные о паре в storage: lesson_id={lesson_id}, subject={subject}")
+            schedule_storage.save_attendance_message(
+                lesson_id=lesson_id,
+                message_id=callback.message.message_id,
+                lesson_name=subject,
+                full_subject=subject,
+                lesson_start="",  
+                break_minutes=10
+            )
+        else:
+            subject = message_info.get("full_subject", message_info.get("lesson_name", ""))
+        
+        if not subject:
+            await callback.answer("❌ Ошибка: предмет не определен", show_alert=True)
+            return
+        
+        if message_info and message_info.get("lesson_start"):
             lesson_start_str = message_info.get("lesson_start", "")
             break_minutes = message_info.get("break_minutes", 10)
             
@@ -809,7 +837,6 @@ async def quick_add_homework_start(callback: CallbackQuery, state: FSMContext):
                     lesson_start = datetime.fromisoformat(lesson_start_str)
                     now = datetime.now(moscow_tz)
                     
-                    # Лимит: 1.5 часа (90 минут) + перерыв
                     time_limit_minutes = 90 + break_minutes
                     deadline = lesson_start + timedelta(minutes=time_limit_minutes)
                     
@@ -1006,3 +1033,23 @@ def is_headman_or_proforg(user_id: int) -> bool:
     if not user_data:
         return False
     return user_data.get("role") in ["Староста", "Профорг", "Зам старосты"]
+
+
+def _extract_subject_from_message(message_text: str) -> str:
+
+    import re
+    
+    pattern = r'[📖📚✏️🔬]\s+(ЛК|ПР|ЛАБ)\s+([^\n]+)'
+    match = re.search(pattern, message_text)
+    
+    if match:
+        lesson_type = match.group(1)
+        lesson_name = match.group(2).strip()
+        # Remove time and location info if present
+        lesson_name = re.split(r'\s*🕐|\s*•', lesson_name)[0].strip()
+        full_subject = f"{lesson_type} {lesson_name}"
+        logger.info(f"Извлечен предмет из сообщения: '{full_subject}'")
+        return full_subject
+    
+    logger.warning(f"Не удалось извлечь предмет по паттерну из сообщения")
+    return ""
