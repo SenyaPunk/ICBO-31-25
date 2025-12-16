@@ -10,10 +10,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from dateutil import tz
 
-from utils.fusion_brain import FusionBrainAPI
-from utils.text_generator import TextGenerator
+from utils.openrouter_text_generator import OpenRouterTextGenerator
 from commands.schedule.schedule_parser import fetch_ics_from_json, parse_schedule, extract_teacher_name, URL
 import re
+from utils.pollinations_image import PollinationsImageAPI
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -21,23 +21,13 @@ logger = logging.getLogger(__name__)
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 NOTIFICATION_CHAT_ID = os.getenv('NOTIFICATION_CHAT_ID', '0')
 
-text_gen = TextGenerator(
-    api_url=os.getenv('WISPBYTE_API_URL'),
-    api_key=os.getenv('WISPBYTE_API_KEY')
+text_gen = OpenRouterTextGenerator(
+    api_key=os.getenv('OPENROUTER_API_KEY'),
+    model=os.getenv('OPENROUTER_MODEL', 'x-ai/grok-2-1212')
 )
 
-fusion_api_key = os.getenv('FUSION_API_KEY')
-fusion_secret_key = os.getenv('FUSION_SECRET_KEY')
-
-if not fusion_api_key or not fusion_secret_key:
-    logger.warning("Fusion Brain API ключи не найдены. Изображения генерироваться не будут.")
-    fusion_api = None
-else:
-    fusion_api = FusionBrainAPI(
-        url='https://api-key.fusionbrain.ai/',
-        api_key=fusion_api_key,
-        secret_key=fusion_secret_key
-    )
+image_api = PollinationsImageAPI()
+logger.info("✅ Система генерации изображений Pollinations.ai инициализирована (без API ключей)")
 
 scheduler = AsyncIOScheduler()
 
@@ -118,22 +108,21 @@ async def send_greeting_message(bot, kind: Literal["morning", "evening"]):
             logger.warning(f"Текст слишком длинный ({len(text)} символов), обрезаем до 1020")
             text = text[:1020] + "..."
         
-        if fusion_api:
-            logger.info(f"Генерируем изображение для {kind}...")
-            image_prompt = get_image_prompt(kind)
-            image_bytes = fusion_api.generate_image_bytes(image_prompt)
-            
-            if image_bytes:
-                logger.info(f"Отправляем фото с caption")
-                photo = BufferedInputFile(image_bytes, filename="greeting.jpg")
-                await bot.send_photo(
-                    chat_id=NOTIFICATION_CHAT_ID,
-                    photo=photo,
-                    caption=text,
-                    parse_mode="HTML"
-                )
-                logger.info(f"✅ Отправлено {kind} приветствие в чат {NOTIFICATION_CHAT_ID}")
-                return
+        logger.info(f"Генерируем изображение для {kind}...")
+        image_prompt = get_image_prompt(kind)
+        image_bytes = image_api.generate_image_bytes(image_prompt)
+        
+        if image_bytes:
+            logger.info(f"Отправляем фото с caption")
+            photo = BufferedInputFile(image_bytes, filename="greeting.jpg")
+            await bot.send_photo(
+                chat_id=NOTIFICATION_CHAT_ID,
+                photo=photo,
+                caption=text,
+                parse_mode="HTML"
+            )
+            logger.info(f"✅ Отправлено {kind} приветствие в чат {NOTIFICATION_CHAT_ID}")
+            return
         
         logger.warning(f"Отправляем только текст без изображения")
         await bot.send_message(
@@ -179,18 +168,16 @@ async def preview_greeting(message: Message):
         if len(text) > 1024:
             text = text[:1020] + "..."
         
-        if fusion_api:
-            image_prompt = get_image_prompt(kind)
-            image_bytes = fusion_api.generate_image_bytes(image_prompt)
-            
-            if image_bytes:
-                photo = BufferedInputFile(image_bytes, filename="preview.jpg")
-                await message.answer_photo(photo=photo, caption=text, parse_mode="HTML")
-                return
+        image_prompt = get_image_prompt(kind)
+        image_bytes = image_api.generate_image_bytes(image_prompt)
+        
+        if image_bytes:
+            photo = BufferedInputFile(image_bytes, filename="preview.jpg")
+            await message.answer_photo(photo=photo, caption=text, parse_mode="HTML")
+            return
         
         await message.answer(
-            f"{text}\n\n(Изображение временно недоступно)\n\n"
-            f"💡 Настройте FUSION_API_KEY и FUSION_SECRET_KEY в .env файле",
+            f"{text}\n\n(Изображение временно недоступно)",
             parse_mode="HTML"
         )
     except Exception as e:
@@ -230,15 +217,12 @@ async def check_greeting_config(message: Message):
     bot_token = os.getenv('BOT_TOKEN')
     status.append(f"🤖 BOT_TOKEN: {'✅ Настроен' if bot_token else '❌ Не найден'}")
     
-    fusion_key = os.getenv('FUSION_API_KEY')
-    fusion_secret = os.getenv('FUSION_SECRET_KEY')
-    status.append(f"🎨 FUSION_API_KEY: {'✅ Настроен' if fusion_key else '❌ Не найден'}")
-    status.append(f"🔑 FUSION_SECRET_KEY: {'✅ Настроен' if fusion_secret else '❌ Не найден'}")
+    status.append(f"🎨 Генерация изображений: ✅ Pollinations.ai (без API ключей)")
     
-    wispbyte_url = os.getenv('WISPBYTE_API_URL')
-    wispbyte_key = os.getenv('WISPBYTE_API_KEY')
-    status.append(f"🌐 WISPBYTE_API_URL: {'✅ ' + wispbyte_url if wispbyte_url else '❌ Не найден'}")
-    status.append(f"🔐 WISPBYTE_API_KEY: {'✅ Настроен' if wispbyte_key else '❌ Не найден'}")
+    openrouter_key = os.getenv('OPENROUTER_API_KEY')
+    openrouter_model = os.getenv('OPENROUTER_MODEL', 'x-ai/grok-2-1212')
+    status.append(f"🔐 OPENROUTER_API_KEY: {'✅ Настроен' if openrouter_key else '❌ Не найден'}")
+    status.append(f"🤖 OPENROUTER_MODEL: {openrouter_model}")
     
     status.append(f"💬 NOTIFICATION_CHAT_ID: {'✅ ' + NOTIFICATION_CHAT_ID if NOTIFICATION_CHAT_ID != '0' else '❌ Не настроен'}")
     
@@ -255,14 +239,10 @@ async def check_greeting_config(message: Message):
     
     config_text = "<b>Конфигурация системы приветствий:</b>\n\n" + "\n".join(status)
     
-    if not fusion_key or not fusion_secret:
-        config_text += "\n\n⚠️ <b>Внимание!</b> Fusion Brain API не настроен.\n"
-        config_text += "Изображения генерироваться не будут."
-    
-    if not wispbyte_url or not wispbyte_key:
-        config_text += "\n\n⚠️ <b>Внимание!</b> Wispbyte API не настроен.\n"
+    if not openrouter_key:
+        config_text += "\n\n⚠️ <b>Внимание!</b> OpenRouter API не настроен.\n"
         config_text += "Будут использоваться стандартные тексты.\n"
-        config_text += "Настройте WISPBYTE_API_URL и WISPBYTE_API_KEY в .env файле."
+        config_text += "Настройте OPENROUTER_API_KEY в .env файле."
     
     if NOTIFICATION_CHAT_ID == '0':
         config_text += "\n\n⚠️ <b>Внимание!</b> NOTIFICATION_CHAT_ID не настроен.\n"
