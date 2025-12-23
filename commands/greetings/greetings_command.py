@@ -15,6 +15,10 @@ from commands.schedule.schedule_parser import fetch_ics_from_json, parse_schedul
 import re
 from utils.pollinations_image import PollinationsImageAPI
 
+from io import BytesIO
+from PIL import Image
+
+
 router = Router()
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,16 @@ image_api = PollinationsImageAPI()
 logger.info("✅ Система генерации изображений Pollinations.ai инициализирована (без API ключей)")
 
 scheduler = AsyncIOScheduler()
+
+
+def normalize_image(image_bytes: bytes) -> bytes | None:
+    try:
+        img = Image.open(BytesIO(image_bytes))
+        out = BytesIO()
+        img.convert("RGB").save(out, format="JPEG", quality=90)
+        return out.getvalue()
+    except Exception:
+        return None
 
 
 def get_image_prompt(kind: Literal["morning", "evening"]) -> str:
@@ -95,25 +109,26 @@ async def send_greeting_message(bot, kind: Literal["morning", "evening"]):
     try:
         logger.info(f"Генерируем текст для {kind} приветствия...")
         text = text_gen.generate_greeting(kind)
-        
+
         if not text or len(text.strip()) == 0:
             logger.error("Сгенерированный текст пустой!")
             text = "Доброе утро! 🌅" if kind == "morning" else "Спокойной ночи! 🌙"
-        
+
         if kind == "evening":
             schedule_text = get_tomorrow_schedule()
             text = text + schedule_text
-        
+
         if len(text) > 1024:
             logger.warning(f"Текст слишком длинный ({len(text)} символов), обрезаем до 1020")
             text = text[:1020] + "..."
-        
+
         logger.info(f"Генерируем изображение для {kind}...")
         image_prompt = get_image_prompt(kind)
+
         image_bytes = image_api.generate_image_bytes(image_prompt)
-        
+        image_bytes = normalize_image(image_bytes) if image_bytes else None
+
         if image_bytes:
-            logger.info(f"Отправляем фото с caption")
             photo = BufferedInputFile(image_bytes, filename="greeting.jpg")
             await bot.send_photo(
                 chat_id=NOTIFICATION_CHAT_ID,
@@ -121,17 +136,16 @@ async def send_greeting_message(bot, kind: Literal["morning", "evening"]):
                 caption=text,
                 parse_mode="HTML"
             )
-            logger.info(f"✅ Отправлено {kind} приветствие в чат {NOTIFICATION_CHAT_ID}")
-            return
-        
-        logger.warning(f"Отправляем только текст без изображения")
+            logger.info("Отправлено приветствие с изображением")
+            return  
+
         await bot.send_message(
             chat_id=NOTIFICATION_CHAT_ID,
             text=f"{text}\n\n(Изображение временно недоступно)",
             parse_mode="HTML"
         )
-        logger.warning(f"Отправлено {kind} приветствие без изображения")
-            
+        logger.info("Отправлено приветствие только текстом (изображение недоступно)")
+
     except Exception as e:
         logger.error(f"Ошибка отправки приветствия: {e}", exc_info=True)
 
