@@ -3,6 +3,7 @@ data
 main.zip
 main1.zip
 test.py
+test/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -25,11 +25,11 @@ from commands.schedule import notifier_instance
 from commands.greetings.greetings_command import router as greetings_router
 from commands.greetings.greetings_command import setup_scheduler as setup_greetings_scheduler
 from commands.greetings.greetings_command import start_scheduler as start_greetings_scheduler
-from commands.schedule.headman_checker import (
-    router as headman_checker_router,
-    HeadmanChecker,
-    set_headman_checker
-)
+# from commands.schedule.headman_checker import (
+#     router as headman_checker_router,
+#     HeadmanChecker,
+#     set_headman_checker
+# )
 from commands.schedule.birthday_notifier import (
     BirthdayNotifier,
     set_birthday_notifier
@@ -74,7 +74,7 @@ async def main():
     dp.include_router(file_manager_router)
     dp.include_router(test_schedule_router)
     dp.include_router(greetings_router)
-    dp.include_router(headman_checker_router)
+    # dp.include_router(headman_checker_router)
     dp.include_router(homework_router)
     dp.include_router(view_homework_router)
     dp.include_router(weekly_digest_router)
@@ -128,9 +128,9 @@ async def main():
     
     if notification_chat_id or test_mode:
         chat_id_for_checker = notification_chat_id or "test"
-        headman_checker = HeadmanChecker(bot, chat_id_for_checker)
-        set_headman_checker(headman_checker)
-        schedule_notifier.set_headman_checker(headman_checker)
+        # headman_checker = HeadmanChecker(bot, chat_id_for_checker)
+        # set_headman_checker(headman_checker)
+        # schedule_notifier.set_headman_checker(headman_checker)
         logger.info(f"HeadmanChecker создан и подключен (chat_id: {chat_id_for_checker})")
     else:
         logger.warning("NOTIFICATION_CHAT_ID не установлен и TEST_MODE не активен. HeadmanChecker не будет работать.")

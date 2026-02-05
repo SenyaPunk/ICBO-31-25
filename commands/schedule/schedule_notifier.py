@@ -214,16 +214,16 @@ class ScheduleNotifier:
             )
             logger.info(f"Данные сохранены в storage до отправки сообщения")
 
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="✋ Меня надо отметить на паре",
-                    callback_data=f"att:{lesson_id}"
-                )],
-                [InlineKeyboardButton(
-                    text="📝 Добавить ДЗ",
-                    callback_data=f"quick_hw:{lesson_id}"
-                )]
-            ])
+            # keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            #     [InlineKeyboardButton(
+            #         text="✋ Меня надо отметить на паре",
+            #         callback_data=f"att:{lesson_id}"
+            #     )],
+            #     [InlineKeyboardButton(
+            #         text="📝 Добавить ДЗ",
+            #         callback_data=f"quick_hw:{lesson_id}"
+            #     )]
+            # ])
             
             logger.info(f"Ищем файлы для пары: '{title}'")
             files = self.storage.get_lesson_files(lesson_id, title)
@@ -235,7 +235,7 @@ class ScheduleNotifier:
             sent_message = await self.bot.send_message(
                 chat_id=self.notification_chat_id,
                 text=message_text,
-                reply_markup=keyboard,
+                # reply_markup=keyboard,
                 parse_mode="HTML"
             )
             
