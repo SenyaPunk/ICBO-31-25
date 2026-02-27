@@ -11,7 +11,7 @@ from commands.schedule.schedule_parser import (
     get_today_lessons,
     format_schedule_message,
     URL,
-    get_week_number
+    get_week_number_from_events
 )
 
 router = Router()
@@ -29,12 +29,14 @@ async def cmd_schedule(message: Message):
         
         schedule_text = format_schedule_message(week_events, "неделю")
         
-        import datetime
-        today = datetime.date.today()
+        from datetime import datetime
+        from dateutil import tz
+        today = datetime.now(tz.gettz("Europe/Moscow")).date()
         week_start = today - datetime.timedelta(days=today.weekday())
         week_end = week_start + datetime.timedelta(days=6)
         
-        week_num = get_week_number(week_start)
+        week_num = get_week_number_from_events(events, week_start)
+
         
         header = (
             f"📚 <b>Расписание на неделю</b> (неделя {week_num})\n"

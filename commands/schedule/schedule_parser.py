@@ -51,7 +51,18 @@ def parse_schedule(ical_str):
         location = str(component.get("LOCATION", "")).strip()
         teacher = str(component.get("DESCRIPTION", "")).strip()
 
-        events.append({"start": start, "end": end, "title": title, "location": location, "teacher": teacher})
+        event_obj = {
+            "start": start,
+            "end": end,
+            "title": title,
+            "location": location,
+            "teacher": teacher
+        }
+
+        if not is_all_day_event(event_obj):
+            events.append(event_obj)
+
+
 
         if component.get("RRULE") or component.get("RDATE") or component.get("EXDATE"):
             rrset = rruleset()
@@ -99,7 +110,7 @@ def parse_schedule(ical_str):
                         ed_dt = ed_dt.astimezone(tz_moscow) if getattr(ed_dt, "tzinfo", None) else ed_dt.replace(tzinfo=tz_moscow)
                         rrset.exdate(ed_dt)
 
-            until = datetime.datetime(2025, 12, 31, tzinfo=tz_moscow)
+            until = start + datetime.timedelta(days=365)
             try:
                 decoded_rr = component.decoded("RRULE")
                 until_raw = decoded_rr.get(b"UNTIL", [None])[0] if isinstance(decoded_rr, dict) else None
@@ -117,15 +128,25 @@ def parse_schedule(ical_str):
                 if occ == start:
                     continue
                 occ = occ.astimezone(tz_moscow) if getattr(occ, "tzinfo", None) else occ.replace(tzinfo=tz_moscow)
-                events.append({
+                occ_event = {
                     "start": occ,
                     "end": occ + (end - start),
                     "title": title,
                     "location": location,
                     "teacher": teacher
-                })
+                }
+
+                if not is_service_event(title) and not is_all_day_event(occ_event):
+                    events.append(occ_event)
 
     return events
+
+def is_all_day_event(event):
+    try:
+        duration = event["end"] - event["start"]
+        return duration >= datetime.timedelta(hours=23, minutes=58)
+    except Exception:
+        return False
 
 
 def is_service_event(title):
@@ -170,6 +191,23 @@ def get_week_number(date):
     if date < semester_start:
         semester_start = datetime.date(date.year - 1, 9, 1)
     return (date - semester_start).days // 7 + 1
+
+def get_week_number_from_events(events, date=None):
+    if date is None:
+        date = datetime.date.today()
+
+    monday = date - datetime.timedelta(days=date.weekday())
+
+    for e in events:
+        event_date = e["start"].date()
+        if event_date == monday:
+            title = e["title"].strip().lower()
+            print("WEEK MARKER EVENT RAW TITLE:", repr(title))
+            match = re.search(r'(\d+)\s*[-]?\s*недел', title)
+            if match:
+                return int(match.group(1))
+
+    return get_week_number(date)
 
 
 def format_schedule_message(events, period_name="неделю"):

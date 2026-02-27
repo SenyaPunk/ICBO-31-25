@@ -2,143 +2,157 @@ import logging
 import requests
 import random
 import time
-import os
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-HF_TOKEN = os.getenv("HF_TOKEN")
+THECATAPI_KEY = None
+UNSPLASH_ACCESS_KEY = None 
+PEXELS_API_KEY = None        
 
 class PollinationsImageAPI:
+    def __init__(self,
+                 source: str = "thecatapi", 
+                 unsplash_key: Optional[str] = None,
+                 pexels_key: Optional[str] = None,
+                 thecatapi_key: Optional[str] = None,
+                 timeout: int = 20):
+        self.source = source
+        self.timeout = timeout
+        self.unsplash_key = unsplash_key
+        self.pexels_key = pexels_key
+        self.thecatapi_key = thecatapi_key
 
-    def __init__(
-        self,
-        base_url: str = "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-        width: int = 1024,
-        height: int = 1024,
-        model: str = "flux-schnell", 
-        enhance: bool = True,
-        nologo: bool = True
-    ):
-        self.base_url = base_url
-        self.headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-        self.width = width
-        self.height = height
-        logger.info(f"HuggingFaceImageAPI initialized (Target: FLUX.1-schnell)")
-
-    def _construct_hq_prompt(self, raw_prompt: str) -> str:
-
-        
-        scenarios = [
-            {
-                "context": "wearing a dark blue university hoodie",
-                "text_pos": "printed on the hoodie chest",
-                "color": "white"
-            },
-            {
-                "context": "wearing a white oversized t-shirt",
-                "text_pos": "printed on the t-shirt",
-                "color": "deep blue"
-            },
-            {
-                "context": "wearing a stylish blue scarf and glasses",
-                "text_pos": "embroidered on the scarf",
-                "color": "white"
-            },
-            {
-                "context": "sitting next to a white ceramic coffee mug",
-                "text_pos": "printed on the mug surface",
-                "color": "blue"
-            },
-            {
-                "context": "sitting on a pile of books with a blue notebook",
-                "text_pos": "printed on the notebook cover",
-                "color": "white"
-            },
-            {
-                "context": "sitting next to a student backpack",
-                "text_pos": "on the backpack patch",
-                "color": "white"
-            },
-            {
-                "context": "working at a desk with a modern laptop open",
-                "text_pos": "displayed brightly on the laptop screen as a wallpaper",
-                "color": "white"
-            },
-            {
-                "context": "holding a modern tablet",
-                "text_pos": "on the tablet screen",
-                "color": "blue"
-            }
-        ]
-
-        backgrounds = [
-            "university library with books",
-            "cozy dorm room with fairy lights",
-            "futuristic cyber-lab with neon",
-            "sunny campus park",
-            "minimalist study desk"
-        ]
-
-        scene = random.choice(scenarios)
-        bg = random.choice(backgrounds)
-
-        
-        clean_prompt = (
-            f"A high-quality photo of a cute fluffy cat {scene['context']}, {raw_prompt}. "
-            f"Background: {bg}. "
-            f"The image features a clear 'RTU MIREA' logo {scene['text_pos']}. "
-            f"The text is '{scene['color']}', bold, sans-serif font. "
-            "The text spells: 'R' 'T' 'U' ' ' 'M' 'I' 'R' 'E' 'A'. "
-            "Focus on the cat and the text. Sharp focus, cinematic lighting, 8k, photorealistic."
-        )
-        return clean_prompt
-
-    def generate_image_bytes(self, prompt: str, timeout: int = 60, max_retries: int = 5) -> bytes | None:
-        final_prompt = self._construct_hq_prompt(prompt)
-        
-        attempt = 0
-        while attempt < max_retries:
-            attempt += 1
-            
-            payload = {
-                "inputs": final_prompt,
-                "parameters": {
-                    "num_inference_steps": 4, 
-                    "guidance_scale": 3.5,
-                    "width": self.width,
-                    "height": self.height
-                }
-            }
-            
+    def _download_bytes(self, url: str, max_retries: int = 3):
+        for attempt in range(max_retries):
             try:
-                logger.info(f"Image attempt={attempt}. Prompt: {final_prompt[:80]}...")
-                
-                resp = requests.post(
-                    self.base_url, 
-                    headers=self.headers, 
-                    json=payload, 
-                    timeout=timeout
-                )
-                
-                if resp.status_code == 503:
-                    wait_time = 20
-                    logger.warning(f"Model is loading (503). Sleeping {wait_time}s...")
-                    time.sleep(wait_time)
-                    continue 
-                
-                if resp.status_code != 200:
-                    logger.warning(f"HF Error {resp.status_code}")
-                    if resp.status_code in [400, 401, 403, 410]:
-                        return None
-                else:
-                    if len(resp.content) > 1000:
-                        return resp.content
+                logger.info(f"Downloading image from {url} (attempt {attempt+1})")
 
-                backoff = (2 ** attempt) + random.uniform(0, 1)
-                time.sleep(backoff)
+                with requests.get(
+                    url,
+                    timeout=(5, 10),  
+                    stream=True
+                ) as resp:
 
+                    if resp.status_code != 200:
+                        logger.warning(f"HTTP {resp.status_code}")
+                        continue
+
+                    chunks = []
+                    for chunk in resp.iter_content(chunk_size=8192):
+                        if chunk:
+                            chunks.append(chunk)
+
+                    return b"".join(chunks)
+
+            except requests.exceptions.ReadTimeout:
+                logger.warning("Read timeout, retrying...")
             except Exception as e:
-                logger.exception(f"Error: {e}")
-                time.sleep(2)
+                logger.exception("Download error: %s", e)
 
         return None
+
+    def _fetch_from_thecatapi(self, limit: int = 5) -> Optional[bytes]:
+        url = "https://api.thecatapi.com/v1/images/search"
+        headers = {}
+        if self.thecatapi_key:
+            headers["x-api-key"] = self.thecatapi_key
+        params = {"limit": limit}
+        try:
+            r = requests.get(url, params=params, headers=headers, timeout=self.timeout)
+            if r.status_code != 200:
+                logger.warning("TheCatAPI returned %s", r.status_code)
+                return None
+            data = r.json()
+            if not data:
+                return None
+            img_url = random.choice(data).get("url")
+            if img_url:
+                return self._download_bytes(img_url)
+        except Exception as e:
+            logger.exception("TheCatAPI error: %s", e)
+        return None
+
+    def _fetch_from_unsplash(self, query: str = "cat morning", per_page: int = 10) -> Optional[bytes]:
+        if not self.unsplash_key:
+            logger.warning("Unsplash API key not provided")
+            return None
+        search_url = "https://api.unsplash.com/search/photos"
+        headers = {"Accept-Version": "v1", "Authorization": f"Client-ID {self.unsplash_key}"}
+        params = {"query": query, "per_page": per_page}
+        try:
+            r = requests.get(search_url, headers=headers, params=params, timeout=self.timeout)
+            if r.status_code != 200:
+                logger.warning("Unsplash API returned %s", r.status_code)
+                return None
+            resp = r.json()
+            results = resp.get("results", [])
+            if not results:
+                return None
+            img_url = random.choice(results).get("urls", {}).get("regular")
+            if img_url:
+                return self._download_bytes(img_url)
+        except Exception as e:
+            logger.exception("Unsplash error: %s", e)
+        return None
+
+    def _fetch_from_pexels(self, query: str = "cat morning", per_page: int = 15) -> Optional[bytes]:
+        if not self.pexels_key:
+            logger.warning("Pexels API key not provided")
+            return None
+        url = "https://api.pexels.com/v1/search"
+        headers = {"Authorization": self.pexels_key}
+        params = {"query": query, "per_page": per_page}
+        try:
+            r = requests.get(url, headers=headers, params=params, timeout=self.timeout)
+            if r.status_code != 200:
+                logger.warning("Pexels API returned %s", r.status_code)
+                return None
+            js = r.json()
+            photos = js.get("photos", [])
+            if not photos:
+                return None
+            img_url = random.choice(photos).get("src", {}).get("large")
+            if img_url:
+                return self._download_bytes(img_url)
+        except Exception as e:
+            logger.exception("Pexels error: %s", e)
+        return None
+
+    def generate_image_bytes(self, prompt: str, timeout: int = 20, max_retries: int = 3):
+
+        if "morning" in prompt.lower():
+            return self.get_cat_image_bytes("morning")
+        elif "evening" in prompt.lower() or "night" in prompt.lower():
+            return self.get_cat_image_bytes("evening")
+        else:
+            return self.get_cat_image_bytes("morning")
+        
+    def get_cat_image_bytes(self, time_of_day: str = "morning") -> Optional[bytes]:
+        queries = {
+            "morning": ["cat morning", "kitten sunrise", "cat sunrise", "cat morning light"],
+            "evening": ["cat evening", "cat sunset", "cat twilight", "cat dusk", "cat night"],
+            "night": ["cat night", "nocturnal cat", "cat moonlight"]
+        }
+        q_list = queries.get(time_of_day.lower(), [f"cat {time_of_day}", "cat"])
+
+        if self.source == "thecatapi":
+            return self._fetch_from_thecatapi(limit=5)
+
+        for q in q_list:
+            if self.source == "unsplash":
+                img = self._fetch_from_unsplash(query=q, per_page=12)
+            elif self.source == "pexels":
+                img = self._fetch_from_pexels(query=q, per_page=12)
+            else:
+                img = None
+
+            if img:
+                return img
+            time.sleep(0.5 + random.random() * 0.5)
+
+
+
+        logger.info("Falling back to TheCatAPI")
+        return self._fetch_from_thecatapi(limit=3)
+
